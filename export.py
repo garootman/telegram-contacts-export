@@ -39,7 +39,11 @@ class TelegramExporter:
         return {}
 
     def save_credentials(self):
-        credentials = {"api_id": self.api_id, "api_hash": self.api_hash, "phone": self.phone}
+        credentials = {
+            "api_id": self.api_id,
+            "api_hash": self.api_hash,
+            "phone": self.phone,
+        }
         with open(CREDENTIALS_FILE, "w", encoding="utf-8") as f:
             json.dump(credentials, f, ensure_ascii=False, indent=2)
         print(f"💾 Учетные данные сохранены в {CREDENTIALS_FILE}")
@@ -63,10 +67,17 @@ class TelegramExporter:
         if self.credentials:
             print("\n📋 Текущие учетные данные:")
             print(f"API ID: {self.credentials.get('api_id', 'не задан')}")
-            print(f"API Hash: {'*' * 10 if self.credentials.get('api_hash') else 'не задан'}")
+            print(
+                f"API Hash: {'*' * 10 if self.credentials.get('api_hash') else 'не задан'}"
+            )
             print(f"Телефон: {self.credentials.get('phone', 'не задан')}")
 
-            if input("\nИспользовать существующие учетные данные? (y/n): ").lower() in ["y", "yes", "да", "д"]:
+            if input("\nИспользовать существующие учетные данные? (y/n): ").lower() in [
+                "y",
+                "yes",
+                "да",
+                "д",
+            ]:
                 self.api_id = self.credentials["api_id"]
                 self.api_hash = self.credentials["api_hash"]
                 self.phone = self.credentials["phone"]
@@ -75,14 +86,18 @@ class TelegramExporter:
         print("\n📝 Введите новые учетные данные:")
         self.api_id = input("API ID: ").strip()
         self.api_hash = input("API Hash: ").strip()
-        self.phone = input("Номер телефона (с кодом страны, например +79991234567): ").strip()
+        self.phone = input(
+            "Номер телефона (с кодом страны, например +79991234567): "
+        ).strip()
 
         if not all([self.api_id, self.api_hash, self.phone]):
             print("❌ Ошибка: все поля должны быть заполнены!")
             return False
 
         # Сохранить учетные данные
-        save_choice = input("\n💾 Сохранить учетные данные для будущих запусков? (y/n): ").lower()
+        save_choice = input(
+            "\n💾 Сохранить учетные данные для будущих запусков? (y/n): "
+        ).lower()
         if save_choice in ["y", "yes", "да", "д"]:
             self.save_credentials()
 
@@ -143,14 +158,24 @@ class TelegramExporter:
 
             # Сохранение промежуточного прогресса каждые 10 контактов
             if (i + 1) % 10 == 0:
-                self.save_progress("contacts", {"completed": i + 1, "total": total, "finished": False})
+                self.save_progress(
+                    "contacts", {"completed": i + 1, "total": total, "finished": False}
+                )
 
         print(f"\n✅ Контакты обработаны: {total}")
 
         # Экспорт в CSV
         contacts_csv = "telegram_contacts.csv"
         with open(contacts_csv, "w", newline="", encoding="utf-8") as csvfile:
-            fieldnames = ["id", "first_name", "last_name", "username", "phone", "is_bot", "is_contact"]
+            fieldnames = [
+                "id",
+                "first_name",
+                "last_name",
+                "username",
+                "phone",
+                "is_bot",
+                "is_contact",
+            ]
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(contact_list)
@@ -159,7 +184,9 @@ class TelegramExporter:
         with open("telegram_contacts.json", "w", encoding="utf-8") as f:
             json.dump(contact_list, f, ensure_ascii=False, indent=2)
 
-        self.save_progress("contacts", {"completed": total, "total": total, "finished": True})
+        self.save_progress(
+            "contacts", {"completed": total, "total": total, "finished": True}
+        )
 
         print(f"📁 Контакты сохранены в {contacts_csv} и telegram_contacts.json")
         return total
@@ -199,7 +226,9 @@ class TelegramExporter:
 
             # Сохранение промежуточного прогресса каждые 10 чатов
             if (i + 1) % 10 == 0:
-                self.save_progress("chats", {"completed": i + 1, "total": total, "finished": False})
+                self.save_progress(
+                    "chats", {"completed": i + 1, "total": total, "finished": False}
+                )
 
         print(f"\n✅ Чаты обработаны: {total}")
 
@@ -224,7 +253,9 @@ class TelegramExporter:
         with open("telegram_dialogs.json", "w", encoding="utf-8") as f:
             json.dump(dialog_list, f, ensure_ascii=False, indent=2)
 
-        self.save_progress("chats", {"completed": total, "total": total, "finished": True})
+        self.save_progress(
+            "chats", {"completed": total, "total": total, "finished": True}
+        )
 
         print(f"📁 Чаты сохранены в {chats_csv} и telegram_dialogs.json")
         return total
@@ -234,9 +265,9 @@ class TelegramExporter:
         if not os.path.exists(NICKNAMES_FILE):
             print(f"❌ Файл {NICKNAMES_FILE} не найден!")
             return set()
-        
+
         try:
-            with open(NICKNAMES_FILE, 'r', encoding='utf-8') as f:
+            with open(NICKNAMES_FILE, "r", encoding="utf-8") as f:
                 nicknames_set = {line.strip().lower() for line in f if line.strip()}
             print(f"📋 Загружено {len(nicknames_set)} ников из {NICKNAMES_FILE}")
             return nicknames_set
@@ -247,110 +278,120 @@ class TelegramExporter:
     async def cross_reference_nicknames(self):
         """Сверяет контакты и чаты с файлом nicknames.txt"""
         print("\n🔍 Сверка с файлом nicknames.txt...")
-        
+
         # Загружаем список ников
         nicknames_set = self.load_nicknames_list()
         if not nicknames_set:
             return
-        
+
         matched_contacts = []
-        
+
         # Сверяем контакты
         print("📞 Сверка контактов...")
         try:
             contacts_result = await self.client(GetContactsRequest(hash=0))
             contacts = contacts_result.users
-            
+
             for contact in contacts:
-                username = getattr(contact, 'username', '')
+                username = getattr(contact, "username", "")
                 if username and username.lower() in nicknames_set:
                     contact_info = {
                         "source": "contacts",
                         "id": contact.id,
-                        "first_name": getattr(contact, 'first_name', '') or '',
-                        "last_name": getattr(contact, 'last_name', '') or '',
+                        "first_name": getattr(contact, "first_name", "") or "",
+                        "last_name": getattr(contact, "last_name", "") or "",
                         "username": username,
-                        "phone": getattr(contact, 'phone', '') or '',
-                        "is_bot": getattr(contact, 'bot', False),
-                        "matched_nick": username.lower()
+                        "phone": getattr(contact, "phone", "") or "",
+                        "is_bot": getattr(contact, "bot", False),
+                        "matched_nick": username.lower(),
                     }
                     matched_contacts.append(contact_info)
                     print(f"✅ Найден контакт: @{username}")
-        
+
         except Exception as e:
             print(f"❌ Ошибка при сверке контактов: {e}")
-        
+
         # Сверяем чаты
         print("💬 Сверка чатов...")
         try:
             dialogs = await self.client.get_dialogs()
             user_dialogs = [d for d in dialogs if d.is_user]
-            
+
             for dialog in user_dialogs:
                 entity = dialog.entity
-                username = getattr(entity, 'username', '')
+                username = getattr(entity, "username", "")
                 if username and username.lower() in nicknames_set:
                     dialog_info = {
                         "source": "chats",
                         "id": entity.id,
-                        "first_name": getattr(entity, 'first_name', '') or '',
-                        "last_name": getattr(entity, 'last_name', '') or '',
+                        "first_name": getattr(entity, "first_name", "") or "",
+                        "last_name": getattr(entity, "last_name", "") or "",
                         "username": username,
-                        "phone": getattr(entity, 'phone', '') or '',
-                        "is_contact": getattr(entity, 'contact', False),
-                        "last_message_date": dialog.date.isoformat() if dialog.date else '',
+                        "phone": getattr(entity, "phone", "") or "",
+                        "is_contact": getattr(entity, "contact", False),
+                        "last_message_date": dialog.date.isoformat()
+                        if dialog.date
+                        else "",
                         "unread_count": dialog.unread_count,
-                        "matched_nick": username.lower()
+                        "matched_nick": username.lower(),
                     }
                     matched_contacts.append(dialog_info)
                     print(f"✅ Найден чат: @{username}")
-        
+
         except Exception as e:
             print(f"❌ Ошибка при сверке чатов: {e}")
-        
+
         # Сохраняем результаты
         if matched_contacts:
             print(f"\n🎯 Найдено совпадений: {len(matched_contacts)}")
-            
+
             # Экспорт в CSV
             matched_csv = "telegram_nicknames_matches.csv"
             with open(matched_csv, "w", newline="", encoding="utf-8") as csvfile:
                 fieldnames = [
-                    "source", "id", "first_name", "last_name", "username", "phone", 
-                    "is_bot", "is_contact", "last_message_date", "unread_count", "matched_nick"
+                    "source",
+                    "id",
+                    "first_name",
+                    "last_name",
+                    "username",
+                    "phone",
+                    "is_bot",
+                    "is_contact",
+                    "last_message_date",
+                    "unread_count",
+                    "matched_nick",
                 ]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
-                
+
                 for contact in matched_contacts:
                     # Добавляем недостающие поля для контактов
                     if contact["source"] == "contacts":
-                        contact.update({
-                            "last_message_date": "",
-                            "unread_count": 0
-                        })
+                        contact.update({"last_message_date": "", "unread_count": 0})
                     else:  # chats
-                        contact.update({
-                            "is_bot": False
-                        })
+                        contact.update({"is_bot": False})
                     writer.writerow(contact)
-            
+
             # Экспорт в JSON
             with open("telegram_nicknames_matches.json", "w", encoding="utf-8") as f:
                 json.dump(matched_contacts, f, ensure_ascii=False, indent=2)
-            
-            print(f"📁 Совпадения сохранены в {matched_csv} и telegram_nicknames_matches.json")
-            
+
+            print(
+                f"📁 Совпадения сохранены в {matched_csv} и telegram_nicknames_matches.json"
+            )
+
             # Статистика
-            contacts_count = sum(1 for c in matched_contacts if c["source"] == "contacts")
+            contacts_count = sum(
+                1 for c in matched_contacts if c["source"] == "contacts"
+            )
             chats_count = sum(1 for c in matched_contacts if c["source"] == "chats")
-            print(f"📊 Статистика:")
+            print("📊 Статистика:")
             print(f"  📞 Контакты: {contacts_count}")
             print(f"  💬 Чаты: {chats_count}")
             print(f"  🎯 Всего: {len(matched_contacts)}")
         else:
             print("❌ Совпадений не найдено")
-        
+
         return len(matched_contacts) if matched_contacts else 0
 
     def show_menu(self):
@@ -359,7 +400,9 @@ class TelegramExporter:
         print("=" * 50)
 
         # Показать статус подключения
-        session_status = "✅ Активна" if os.path.exists(SESSION_FILE) else "❌ Не создана"
+        session_status = (
+            "✅ Активна" if os.path.exists(SESSION_FILE) else "❌ Не создана"
+        )
         credentials_status = "✅ Сохранены" if self.credentials else "❌ Не настроены"
 
         print("\n🔐 Статус:")
@@ -370,13 +413,17 @@ class TelegramExporter:
         if self.progress:
             print("\n📊 Информация о предыдущих экспортах:")
             for export_type, data in self.progress.items():
-                timestamp = datetime.fromisoformat(data["timestamp"]).strftime("%d.%m.%Y %H:%M")
+                timestamp = datetime.fromisoformat(data["timestamp"]).strftime(
+                    "%d.%m.%Y %H:%M"
+                )
                 status = "✅ Завершен" if data.get("finished") else "⏸️ Прерван"
                 completed = data.get("completed", 0)
                 total = data.get("total", 0)
                 progress_percent = int(completed / total * 100) if total > 0 else 0
 
-                print(f"  {export_type.capitalize()}: {status} {timestamp} ({completed}/{total}, {progress_percent}%)")
+                print(
+                    f"  {export_type.capitalize()}: {status} {timestamp} ({completed}/{total}, {progress_percent}%)"
+                )
 
         print("\n📋 Выберите действие:")
         print("1. Настройка и подключение к Telegram")
@@ -391,7 +438,9 @@ class TelegramExporter:
     async def ensure_connection(self):
         if not all([self.api_id, self.api_hash, self.phone]):
             if not self.load_saved_credentials():
-                print("❌ Сначала необходимо настроить подключение к Telegram (пункт 1)")
+                print(
+                    "❌ Сначала необходимо настроить подключение к Telegram (пункт 1)"
+                )
                 return False
 
         if not self.client:
@@ -423,8 +472,12 @@ class TelegramExporter:
                         continue
 
                     resume = False
-                    if "contacts" in self.progress and not self.progress["contacts"].get("finished", False):
-                        resume_choice = input("Найден незавершенный экспорт контактов. Продолжить? (y/n): ").lower()
+                    if "contacts" in self.progress and not self.progress[
+                        "contacts"
+                    ].get("finished", False):
+                        resume_choice = input(
+                            "Найден незавершенный экспорт контактов. Продолжить? (y/n): "
+                        ).lower()
                         resume = resume_choice in ["y", "yes", "да", "д"]
 
                     await self.export_contacts(resume=resume)
@@ -435,8 +488,12 @@ class TelegramExporter:
                         continue
 
                     resume = False
-                    if "chats" in self.progress and not self.progress["chats"].get("finished", False):
-                        resume_choice = input("Найден незавершенный экспорт чатов. Продолжить? (y/n): ").lower()
+                    if "chats" in self.progress and not self.progress["chats"].get(
+                        "finished", False
+                    ):
+                        resume_choice = input(
+                            "Найден незавершенный экспорт чатов. Продолжить? (y/n): "
+                        ).lower()
                         resume = resume_choice in ["y", "yes", "да", "д"]
 
                     await self.export_chats(resume=resume)
@@ -449,12 +506,20 @@ class TelegramExporter:
                     resume_contacts = False
                     resume_chats = False
 
-                    if "contacts" in self.progress and not self.progress["contacts"].get("finished", False):
-                        resume_choice = input("Найден незавершенный экспорт контактов. Продолжить? (y/n): ").lower()
+                    if "contacts" in self.progress and not self.progress[
+                        "contacts"
+                    ].get("finished", False):
+                        resume_choice = input(
+                            "Найден незавершенный экспорт контактов. Продолжить? (y/n): "
+                        ).lower()
                         resume_contacts = resume_choice in ["y", "yes", "да", "д"]
 
-                    if "chats" in self.progress and not self.progress["chats"].get("finished", False):
-                        resume_choice = input("Найден незавершенный экспорт чатов. Продолжить? (y/n): ").lower()
+                    if "chats" in self.progress and not self.progress["chats"].get(
+                        "finished", False
+                    ):
+                        resume_choice = input(
+                            "Найден незавершенный экспорт чатов. Продолжить? (y/n): "
+                        ).lower()
                         resume_chats = resume_choice in ["y", "yes", "да", "д"]
 
                     contacts_count = await self.export_contacts(resume=resume_contacts)
@@ -468,10 +533,12 @@ class TelegramExporter:
                     # Сверка с файлом nicknames.txt
                     if not await self.ensure_connection():
                         continue
-                    
+
                     matches_count = await self.cross_reference_nicknames()
                     if matches_count > 0:
-                        print(f"\n🎉 Сверка завершена! Найдено {matches_count} совпадений")
+                        print(
+                            f"\n🎉 Сверка завершена! Найдено {matches_count} совпадений"
+                        )
                     else:
                         print("\n😞 Сверка завершена, совпадений не найдено")
 
