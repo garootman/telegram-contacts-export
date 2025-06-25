@@ -203,3 +203,6 @@ credentials.json
 export_progress.json
 anon.session
 shkury.txt
+anon.session-journal
+telegram_nicknames_matches.csv
+telegram_nicknames_matches.json
