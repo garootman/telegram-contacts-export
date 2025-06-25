@@ -192,3 +192,14 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+telegram_chats.csv
+telegram_contacts.csv
+telegram_contacts.json
+telegram_dialogs.json
+telegram_shkury_matches.csv
+telegram_shkury_matches.json
+credentials.json
+export_progress.json
+anon.session
+shkury.txt

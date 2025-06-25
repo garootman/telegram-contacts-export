@@ -1,0 +1,5 @@
+place
+nicknames
+here
+in_format
+one_nick_per_line
