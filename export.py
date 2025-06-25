@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""
+Telegram contacts and chats exporter.
+
+This module provides functionality to export Telegram contacts and chats to CSV and JSON formats.
+It also supports cross-referencing with a nicknames file to find specific users.
+"""
 import asyncio
 import csv
 import json
@@ -18,6 +24,12 @@ NICKNAMES_FILE = "nicknames.txt"
 
 
 class TelegramExporter:
+    """
+    Main class for exporting Telegram contacts and chats.
+    
+    Handles authentication, data export to CSV/JSON formats,
+    and cross-referencing with nicknames file.
+    """
     def __init__(self):
         self.api_id = None
         self.api_hash = None
@@ -27,18 +39,21 @@ class TelegramExporter:
         self.credentials = self.load_credentials()
 
     def load_progress(self) -> dict:
+        """Load export progress from file."""
         if os.path.exists(PROGRESS_FILE):
             with open(PROGRESS_FILE, encoding="utf-8") as f:
                 return json.load(f)
         return {}
 
     def load_credentials(self) -> dict:
+        """Load saved credentials from file."""
         if os.path.exists(CREDENTIALS_FILE):
             with open(CREDENTIALS_FILE, encoding="utf-8") as f:
                 return json.load(f)
         return {}
 
     def save_credentials(self):
+        """Save API credentials to file."""
         credentials = {
             "api_id": self.api_id,
             "api_hash": self.api_hash,
@@ -49,6 +64,7 @@ class TelegramExporter:
         print(f"💾 Учетные данные сохранены в {CREDENTIALS_FILE}")
 
     def save_progress(self, export_type: str, data: dict):
+        """Save export progress to file."""
         self.progress[export_type] = {
             "timestamp": datetime.now().isoformat(),
             "completed": data.get("completed", 0),
@@ -59,6 +75,7 @@ class TelegramExporter:
             json.dump(self.progress, f, ensure_ascii=False, indent=2)
 
     def setup_credentials(self):
+        """Set up Telegram API credentials interactively."""
         print("\n🔧 Настройка учетных данных Telegram API")
         print("Получите api_id и api_hash на https://my.telegram.org")
         print("=" * 50)
@@ -81,7 +98,7 @@ class TelegramExporter:
                 self.api_id = self.credentials["api_id"]
                 self.api_hash = self.credentials["api_hash"]
                 self.phone = self.credentials["phone"]
-                return
+                return True
 
         print("\n📝 Введите новые учетные данные:")
         self.api_id = input("API ID: ").strip()
@@ -104,6 +121,7 @@ class TelegramExporter:
         return True
 
     def load_saved_credentials(self):
+        """Load previously saved credentials."""
         if self.credentials:
             self.api_id = self.credentials.get("api_id")
             self.api_hash = self.credentials.get("api_hash")
@@ -112,6 +130,7 @@ class TelegramExporter:
         return False
 
     async def create_client(self):
+        """Create and authenticate Telegram client."""
         if os.path.exists(SESSION_FILE):
             print(f"Найден файл сессии {SESSION_FILE}, используем существующую сессию")
 
@@ -126,6 +145,7 @@ class TelegramExporter:
         print("Успешно подключен к Telegram!")
 
     async def export_contacts(self, resume: bool = False):
+        """Export Telegram contacts to CSV and JSON files."""
         print("\n📞 Экспорт контактов...")
 
         contacts_result = await self.client(GetContactsRequest(hash=0))
@@ -192,6 +212,7 @@ class TelegramExporter:
         return total
 
     async def export_chats(self, resume: bool = False):
+        """Export Telegram chats to CSV and JSON files."""
         print("\n💬 Экспорт чатов...")
 
         dialogs = await self.client.get_dialogs()
@@ -261,7 +282,7 @@ class TelegramExporter:
         return total
 
     def load_nicknames_list(self):
-        """Загружает список ников из файла nicknames.txt"""
+        """Load list of nicknames from nicknames.txt file."""
         if not os.path.exists(NICKNAMES_FILE):
             print(f"❌ Файл {NICKNAMES_FILE} не найден!")
             return set()
@@ -276,6 +297,7 @@ class TelegramExporter:
             return set()
 
     async def cross_reference_nicknames(self):
+        """Cross-reference contacts and chats with nicknames file."""
         """Сверяет контакты и чаты с файлом nicknames.txt"""
         print("\n🔍 Сверка с файлом nicknames.txt...")
 
@@ -395,6 +417,7 @@ class TelegramExporter:
         return len(matched_contacts) if matched_contacts else 0
 
     def show_menu(self):
+        """Display interactive menu and get user choice."""
         print("\n" + "=" * 50)
         print("🚀 Telegram Data Exporter")
         print("=" * 50)
@@ -422,7 +445,8 @@ class TelegramExporter:
                 progress_percent = int(completed / total * 100) if total > 0 else 0
 
                 print(
-                    f"  {export_type.capitalize()}: {status} {timestamp} ({completed}/{total}, {progress_percent}%)"
+                    f"  {export_type.capitalize()}: {status} {timestamp} "
+                    f"({completed}/{total}, {progress_percent}%)"
                 )
 
         print("\n📋 Выберите действие:")
@@ -436,6 +460,7 @@ class TelegramExporter:
         return input("\nВведите номер действия: ").strip()
 
     async def ensure_connection(self):
+        """Ensure Telegram connection is established."""
         if not all([self.api_id, self.api_hash, self.phone]):
             if not self.load_saved_credentials():
                 print(
@@ -449,6 +474,7 @@ class TelegramExporter:
         return True
 
     async def run(self):
+        """Main application loop."""
         try:
             while True:
                 choice = self.show_menu()
@@ -457,7 +483,7 @@ class TelegramExporter:
                     print("👋 До свидания!")
                     break
 
-                elif choice == "1":
+                if choice == "1":
                     # Настройка и подключение
                     if self.setup_credentials():
                         print("\n🔄 Создание сессии Telegram...")
@@ -553,6 +579,7 @@ class TelegramExporter:
 
 
 def main():
+    """Main entry point."""
     if sys.version_info < (3, 7):
         print("Требуется Python 3.7 или выше")
         sys.exit(1)
