@@ -206,3 +206,5 @@ shkury.txt
 anon.session-journal
 telegram_nicknames_matches.csv
 telegram_nicknames_matches.json
+telegram_chat_members.csv
+telegram_chat_members.json

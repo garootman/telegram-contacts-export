@@ -5,6 +5,7 @@ Telegram contacts and chats exporter.
 This module provides functionality to export Telegram contacts and chats to CSV and JSON formats.
 It also supports cross-referencing with a nicknames file to find specific users.
 """
+
 import asyncio
 import csv
 import json
@@ -14,8 +15,14 @@ from datetime import datetime
 from getpass import getpass
 
 from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError
+from telethon.errors import (
+    SessionPasswordNeededError,
+    ChatAdminRequiredError,
+    ChannelPrivateError,
+)
 from telethon.tl.functions.contacts import GetContactsRequest
+from telethon.tl.functions.channels import GetParticipantsRequest
+from telethon.tl.types import ChannelParticipantsSearch, Channel, Chat
 
 SESSION_FILE = "anon.session"
 PROGRESS_FILE = "export_progress.json"
@@ -26,10 +33,11 @@ NICKNAMES_FILE = "nicknames.txt"
 class TelegramExporter:
     """
     Main class for exporting Telegram contacts and chats.
-    
+
     Handles authentication, data export to CSV/JSON formats,
     and cross-referencing with nicknames file.
     """
+
     def __init__(self):
         self.api_id = None
         self.api_hash = None
@@ -281,6 +289,136 @@ class TelegramExporter:
         print(f"📁 Чаты сохранены в {chats_csv} и telegram_dialogs.json")
         return total
 
+    async def export_chat_members(self, resume: bool = False):
+        """Export all members from all accessible chats and groups."""
+        print("\n👥 Экспорт участников чатов...")
+
+        dialogs = await self.client.get_dialogs()
+        group_dialogs = [d for d in dialogs if d.is_group or d.is_channel]
+        total_chats = len(group_dialogs)
+
+        if resume and "chat_members" in self.progress:
+            completed_chats = self.progress["chat_members"].get("completed", 0)
+            print(f"Продолжение с позиции {completed_chats}/{total_chats}")
+        else:
+            completed_chats = 0
+
+        all_members = []
+        processed_chats = 0
+
+        for i, dialog in enumerate(group_dialogs[completed_chats:], completed_chats):
+            try:
+                entity = dialog.entity
+                chat_title = dialog.title or "Без названия"
+                chat_id = entity.id
+                chat_type = "channel" if dialog.is_channel else "group"
+
+                print(f"\n🔍 Обрабатываем {chat_type}: {chat_title}")
+
+                if isinstance(entity, (Channel, Chat)):
+                    # Получаем участников чата
+                    try:
+                        if dialog.is_channel:
+                            # For channels, we need to use GetParticipantsRequest
+                            participants = await self.client(
+                                GetParticipantsRequest(
+                                    entity,
+                                    ChannelParticipantsSearch(""),
+                                    offset=0,
+                                    limit=10000,
+                                    hash=0,
+                                )
+                            )
+                            members = participants.users
+                        else:
+                            # For regular groups, use get_participants
+                            members = await self.client.get_participants(entity)
+
+                        for member in members:
+                            if hasattr(member, "id"):  # Ensure it's a user
+                                member_info = {
+                                    "chat_id": chat_id,
+                                    "chat_title": chat_title,
+                                    "chat_type": chat_type,
+                                    "user_id": member.id,
+                                    "first_name": getattr(member, "first_name", "")
+                                    or "",
+                                    "last_name": getattr(member, "last_name", "") or "",
+                                    "username": getattr(member, "username", "") or "",
+                                    "phone": getattr(member, "phone", "") or "",
+                                    "is_bot": getattr(member, "bot", False),
+                                    "is_premium": getattr(member, "premium", False),
+                                    "is_verified": getattr(member, "verified", False),
+                                }
+                                all_members.append(member_info)
+
+                        print(f"✅ Найдено {len(members)} участников")
+
+                    except (ChatAdminRequiredError, ChannelPrivateError) as e:
+                        print(f"⚠️ Нет доступа к участникам: {e}")
+                    except Exception as e:
+                        print(f"❌ Ошибка при получении участников: {e}")
+
+                processed_chats += 1
+                progress = int(processed_chats / total_chats * 100)
+                print(f"Прогресс чатов: {processed_chats}/{total_chats} ({progress}%)")
+
+                # Сохранение промежуточного прогресса каждые 5 чатов
+                if processed_chats % 5 == 0:
+                    self.save_progress(
+                        "chat_members",
+                        {
+                            "completed": processed_chats,
+                            "total": total_chats,
+                            "finished": False,
+                        },
+                    )
+
+            except Exception as e:
+                print(f"❌ Ошибка при обработке чата {dialog.title}: {e}")
+                processed_chats += 1
+                continue
+
+        print(
+            f"\n✅ Участники чатов обработаны: {len(all_members)} из {total_chats} чатов"
+        )
+
+        if all_members:
+            # Экспорт в CSV
+            members_csv = "telegram_chat_members.csv"
+            with open(members_csv, "w", newline="", encoding="utf-8") as csvfile:
+                fieldnames = [
+                    "chat_id",
+                    "chat_title",
+                    "chat_type",
+                    "user_id",
+                    "first_name",
+                    "last_name",
+                    "username",
+                    "phone",
+                    "is_bot",
+                    "is_premium",
+                    "is_verified",
+                ]
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(all_members)
+
+            # Экспорт в JSON
+            with open("telegram_chat_members.json", "w", encoding="utf-8") as f:
+                json.dump(all_members, f, ensure_ascii=False, indent=2)
+
+            print(
+                f"📁 Участники чатов сохранены в {members_csv} и telegram_chat_members.json"
+            )
+
+        self.save_progress(
+            "chat_members",
+            {"completed": total_chats, "total": total_chats, "finished": True},
+        )
+
+        return len(all_members)
+
     def load_nicknames_list(self):
         """Load list of nicknames from nicknames.txt file."""
         if not os.path.exists(NICKNAMES_FILE):
@@ -296,7 +434,7 @@ class TelegramExporter:
             print(f"❌ Ошибка при чтении файла {NICKNAMES_FILE}: {e}")
             return set()
 
-    async def cross_reference_nicknames(self):
+    def cross_reference_nicknames_offline(self):
         """Cross-reference contacts and chats with nicknames file."""
         """Сверяет контакты и чаты с файлом nicknames.txt"""
         print("\n🔍 Сверка с файлом nicknames.txt...")
@@ -308,60 +446,99 @@ class TelegramExporter:
 
         matched_contacts = []
 
-        # Сверяем контакты
+        # Сверяем контакты из файла
         print("📞 Сверка контактов...")
         try:
-            contacts_result = await self.client(GetContactsRequest(hash=0))
-            contacts = contacts_result.users
-
-            for contact in contacts:
-                username = getattr(contact, "username", "")
-                if username and username.lower() in nicknames_set:
-                    contact_info = {
-                        "source": "contacts",
-                        "id": contact.id,
-                        "first_name": getattr(contact, "first_name", "") or "",
-                        "last_name": getattr(contact, "last_name", "") or "",
-                        "username": username,
-                        "phone": getattr(contact, "phone", "") or "",
-                        "is_bot": getattr(contact, "bot", False),
-                        "matched_nick": username.lower(),
-                    }
-                    matched_contacts.append(contact_info)
-                    print(f"✅ Найден контакт: @{username}")
+            if os.path.exists("telegram_contacts.json"):
+                with open("telegram_contacts.json", "r", encoding="utf-8") as f:
+                    contacts = json.load(f)
+                
+                for contact in contacts:
+                    username = contact.get("username", "")
+                    if username and username.lower() in nicknames_set:
+                        contact_info = {
+                            "source": "contacts",
+                            "found_in_chat": "Контакты",
+                            "chat_id": "",
+                            "id": contact.get("id", ""),
+                            "first_name": contact.get("first_name", ""),
+                            "last_name": contact.get("last_name", ""),
+                            "username": username,
+                            "phone": contact.get("phone", ""),
+                            "is_bot": contact.get("is_bot", False),
+                            "matched_nick": username.lower(),
+                        }
+                        matched_contacts.append(contact_info)
+                        print(f"✅ Найден контакт: @{username}")
+            else:
+                print("⚠️ Файл telegram_contacts.json не найден, пропускаем сверку контактов")
 
         except Exception as e:
             print(f"❌ Ошибка при сверке контактов: {e}")
 
-        # Сверяем чаты
+        # Сверяем чаты из файла
         print("💬 Сверка чатов...")
         try:
-            dialogs = await self.client.get_dialogs()
-            user_dialogs = [d for d in dialogs if d.is_user]
-
-            for dialog in user_dialogs:
-                entity = dialog.entity
-                username = getattr(entity, "username", "")
-                if username and username.lower() in nicknames_set:
-                    dialog_info = {
-                        "source": "chats",
-                        "id": entity.id,
-                        "first_name": getattr(entity, "first_name", "") or "",
-                        "last_name": getattr(entity, "last_name", "") or "",
-                        "username": username,
-                        "phone": getattr(entity, "phone", "") or "",
-                        "is_contact": getattr(entity, "contact", False),
-                        "last_message_date": dialog.date.isoformat()
-                        if dialog.date
-                        else "",
-                        "unread_count": dialog.unread_count,
-                        "matched_nick": username.lower(),
-                    }
-                    matched_contacts.append(dialog_info)
-                    print(f"✅ Найден чат: @{username}")
+            if os.path.exists("telegram_dialogs.json"):
+                with open("telegram_dialogs.json", "r", encoding="utf-8") as f:
+                    dialogs = json.load(f)
+                
+                for dialog in dialogs:
+                    username = dialog.get("username", "")
+                    if username and username.lower() in nicknames_set:
+                        dialog_info = {
+                            "source": "chats",
+                            "found_in_chat": "Личные сообщения",
+                            "chat_id": dialog.get("id", ""),
+                            "id": dialog.get("id", ""),
+                            "first_name": dialog.get("first_name", ""),
+                            "last_name": dialog.get("last_name", ""),
+                            "username": username,
+                            "phone": dialog.get("phone", ""),
+                            "is_contact": dialog.get("is_contact", False),
+                            "last_message_date": dialog.get("last_message_date", ""),
+                            "unread_count": dialog.get("unread_count", 0),
+                            "matched_nick": username.lower(),
+                        }
+                        matched_contacts.append(dialog_info)
+                        print(f"✅ Найден чат: @{username}")
+            else:
+                print("⚠️ Файл telegram_dialogs.json не найден, пропускаем сверку чатов")
 
         except Exception as e:
             print(f"❌ Ошибка при сверке чатов: {e}")
+
+        # Сверяем участников чатов из файла
+        print("👥 Сверка участников чатов...")
+        try:
+            if os.path.exists("telegram_chat_members.json"):
+                with open("telegram_chat_members.json", "r", encoding="utf-8") as f:
+                    chat_members = json.load(f)
+                
+                for member in chat_members:
+                    username = member.get("username", "")
+                    if username and username.lower() in nicknames_set:
+                        member_info = {
+                            "source": "chat_members",
+                            "found_in_chat": f"{member.get('chat_title', '')} ({member.get('chat_type', '')})",
+                            "chat_id": member.get("chat_id", ""),
+                            "id": member.get("user_id", ""),
+                            "first_name": member.get("first_name", ""),
+                            "last_name": member.get("last_name", ""),
+                            "username": username,
+                            "phone": member.get("phone", ""),
+                            "is_bot": member.get("is_bot", False),
+                            "is_premium": member.get("is_premium", False),
+                            "is_verified": member.get("is_verified", False),
+                            "matched_nick": username.lower(),
+                        }
+                        matched_contacts.append(member_info)
+                        print(f"✅ Найден участник в {member.get('chat_title', '')}: @{username}")
+            else:
+                print("⚠️ Файл telegram_chat_members.json не найден, пропускаем сверку участников чатов")
+
+        except Exception as e:
+            print(f"❌ Ошибка при сверке участников чатов: {e}")
 
         # Сохраняем результаты
         if matched_contacts:
@@ -372,6 +549,8 @@ class TelegramExporter:
             with open(matched_csv, "w", newline="", encoding="utf-8") as csvfile:
                 fieldnames = [
                     "source",
+                    "found_in_chat",
+                    "chat_id",
                     "id",
                     "first_name",
                     "last_name",
@@ -379,6 +558,8 @@ class TelegramExporter:
                     "phone",
                     "is_bot",
                     "is_contact",
+                    "is_premium",
+                    "is_verified",
                     "last_message_date",
                     "unread_count",
                     "matched_nick",
@@ -387,11 +568,27 @@ class TelegramExporter:
                 writer.writeheader()
 
                 for contact in matched_contacts:
-                    # Добавляем недостающие поля для контактов
+                    # Добавляем недостающие поля для разных источников
                     if contact["source"] == "contacts":
-                        contact.update({"last_message_date": "", "unread_count": 0})
-                    else:  # chats
-                        contact.update({"is_bot": False})
+                        contact.update(
+                            {
+                                "last_message_date": "",
+                                "unread_count": 0,
+                                "is_premium": False,
+                                "is_verified": False,
+                                "is_contact": True,
+                            }
+                        )
+                    elif contact["source"] == "chats":
+                        contact.update({"is_premium": False, "is_verified": False})
+                    elif contact["source"] == "chat_members":
+                        contact.update(
+                            {
+                                "is_contact": False,
+                                "last_message_date": "",
+                                "unread_count": 0,
+                            }
+                        )
                     writer.writerow(contact)
 
             # Экспорт в JSON
@@ -407,9 +604,13 @@ class TelegramExporter:
                 1 for c in matched_contacts if c["source"] == "contacts"
             )
             chats_count = sum(1 for c in matched_contacts if c["source"] == "chats")
+            chat_members_count = sum(
+                1 for c in matched_contacts if c["source"] == "chat_members"
+            )
             print("📊 Статистика:")
             print(f"  📞 Контакты: {contacts_count}")
             print(f"  💬 Чаты: {chats_count}")
+            print(f"  👥 Участники чатов: {chat_members_count}")
             print(f"  🎯 Всего: {len(matched_contacts)}")
         else:
             print("❌ Совпадений не найдено")
@@ -453,8 +654,9 @@ class TelegramExporter:
         print("1. Настройка и подключение к Telegram")
         print("2. Экспорт контактов")
         print("3. Экспорт чатов")
-        print("4. Экспорт всего (контакты + чаты)")
-        print("5. Сверка с файлом nicknames.txt")
+        print("4. Экспорт участников чатов")
+        print("5. Экспорт всего (контакты + чаты + участники)")
+        print("6. Сверка с файлом nicknames.txt")
         print("0. Выход")
 
         return input("\nВведите номер действия: ").strip()
@@ -525,12 +727,32 @@ class TelegramExporter:
                     await self.export_chats(resume=resume)
 
                 elif choice == "4":
+                    # Экспорт участников чатов
+                    if not await self.ensure_connection():
+                        continue
+
+                    resume = False
+                    if "chat_members" in self.progress and not self.progress[
+                        "chat_members"
+                    ].get("finished", False):
+                        resume_choice = input(
+                            "Найден незавершенный экспорт участников чатов. Продолжить? (y/n): "
+                        ).lower()
+                        resume = resume_choice in ["y", "yes", "да", "д"]
+
+                    members_count = await self.export_chat_members(resume=resume)
+                    print(
+                        f"\n🎉 Экспорт участников завершен! Найдено {members_count} участников"
+                    )
+
+                elif choice == "5":
                     # Экспорт всего
                     if not await self.ensure_connection():
                         continue
 
                     resume_contacts = False
                     resume_chats = False
+                    resume_members = False
 
                     if "contacts" in self.progress and not self.progress[
                         "contacts"
@@ -548,19 +770,28 @@ class TelegramExporter:
                         ).lower()
                         resume_chats = resume_choice in ["y", "yes", "да", "д"]
 
+                    if "chat_members" in self.progress and not self.progress[
+                        "chat_members"
+                    ].get("finished", False):
+                        resume_choice = input(
+                            "Найден незавершенный экспорт участников чатов. Продолжить? (y/n): "
+                        ).lower()
+                        resume_members = resume_choice in ["y", "yes", "да", "д"]
+
                     contacts_count = await self.export_contacts(resume=resume_contacts)
                     chats_count = await self.export_chats(resume=resume_chats)
+                    members_count = await self.export_chat_members(
+                        resume=resume_members
+                    )
 
-                    print("\n🎉 Экспорт завершен!")
+                    print("\n🎉 Полный экспорт завершен!")
                     print(f"📞 Контактов: {contacts_count}")
                     print(f"💬 Чатов: {chats_count}")
+                    print(f"👥 Участников чатов: {members_count}")
 
-                elif choice == "5":
+                elif choice == "6":
                     # Сверка с файлом nicknames.txt
-                    if not await self.ensure_connection():
-                        continue
-
-                    matches_count = await self.cross_reference_nicknames()
+                    matches_count = self.cross_reference_nicknames_offline()
                     if matches_count > 0:
                         print(
                             f"\n🎉 Сверка завершена! Найдено {matches_count} совпадений"
