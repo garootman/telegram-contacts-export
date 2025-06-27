@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python application that exports Telegram contacts and chat data to CSV/JSON formats. It provides a command-line interface for authentication, data export, and cross-referencing with custom nickname lists.
+This is a refactored Python application that exports Telegram contacts and chat data to CSV/JSON formats. It provides a modular command-line interface with multi-session support, progress tracking, and cross-referencing capabilities.
 
 ## Common Commands
 
 ### Running the Application
 ```bash
-python export.py
+python main.py
 ```
 
 ### Development Setup
@@ -23,97 +23,107 @@ venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
-### Code Quality
+### Testing
 ```bash
-ruff check .          # Linting (preferred over pylint)
-ruff format .         # Code formatting
+pytest                    # All tests
+pytest -m "not integration"  # Fast unit tests only
+pytest -n auto          # Parallel execution for speed
 ```
 
-Note: The project uses Ruff for linting and formatting. Previous attempts with pylint were abandoned in favor of Ruff.
+### Code Quality
+```bash
+ruff check .          # Linting
+ruff format .         # Auto-formatting
+ruff check . --fix    # Auto-fix issues
+```
+
+Note: Ruff handles both linting and formatting. Auto-formatting occurs on file save in VS Code.
 
 ## Architecture
 
-### Core Components
+### Modular Structure
 
-**`export.py`** - Single main file containing:
-- `TelegramExporter` class: Main application logic
-- Async/await pattern using Telethon library
-- Interactive CLI menu system with Russian interface
-- Session management and progress tracking
-- Data export functionality (CSV/JSON)
-- Cross-referencing system for nickname matching
+The application is refactored into separate modules:
 
-### Key Files and Data Flow
+**`src/telegram_exporter.py`** - Main orchestrator class
+**`src/session_manager.py`** - Multi-session management  
+**`src/file_manager.py`** - File operations with session isolation
+**`src/menu_manager.py`** - User interface and menu handling
+**`src/telegram_client_wrapper.py`** - Telegram API wrapper
+**`src/config.py`** - Configuration constants and templates
+**`main.py`** - Application entry point
 
-**Configuration Files:**
-- `credentials.json` - API credentials storage
-- `anon.session` - Telegram session persistence
-- `export_progress.json` - Export resume capability
-- `nicknames.txt` - User-defined nicknames for cross-referencing
+### Key Features
 
-**Output Files:**
-- `telegram_contacts.csv/json` - Exported contacts
-- `telegram_chats.csv` - Chat metadata
-- `telegram_dialogs.json` - Dialog information
-- `telegram_nicknames_matches.csv/json` - Cross-reference results
+**Multi-Session Support:**
+- Sessions stored in `sessions/` directory
+- Each session has isolated exports in `exports/{session}/`
+- Session metadata with credentials and usage tracking
+- Legacy session migration from old `anon.session` format
 
-### Authentication Flow
-1. User provides API credentials (api_id, api_hash from my.telegram.org)
-2. Phone number verification
-3. Two-factor authentication if enabled
-4. Session saved to `anon.session` for reuse
+**File Organization:**
+- Session-specific output files using templates
+- Progress tracking per session: `export_progress_{session}.json`
+- Exported data: `telegram_contacts_{session}.csv/json`
+- Cross-references: `telegram_nicknames_matches_{session}.csv/json`
 
-### Export Process
-- Batch processing with progress tracking
+**Export Process:**
+- Granular chat member exports (per-chat processing)
 - Resume capability for interrupted exports
-- Dual format output (CSV for spreadsheets, JSON for programmatic use)
-- Unicode support for international usernames
+- Dual format output (CSV + JSON)
+- Progress saving every 10 items or per chat
+
+### Session Management
+1. User selects or creates session at startup
+2. API credentials stored per session in `sessions/{session}_info.json`
+3. Telegram session files in `sessions/{session}.session`
+4. All exports isolated by session in `exports/{session}/`
 
 ## Development Notes
 
 ### Dependencies
 - **Telethon**: Modern Telegram client library (>= 1.40.0)
+- **pytest**: Testing framework with async support
+- **pytest-xdist**: Parallel test execution (optional)
 - **Python 3.7+**: Minimum version requirement
-- Standard library only (asyncio, csv, json, datetime)
 
 ### Code Style
 - Russian language interface and comments
-- Async/await pattern throughout
-- Progress indicators and user feedback
-- Error handling with user-friendly messages
-- Modular class-based design
+- Modular architecture with separation of concerns
+- Async/await pattern for Telegram operations
+- Context managers for resource management
+- Type hints where appropriate
+- Auto-formatting with Ruff on save
+
+### Testing
+- Minimal test suite focused on core functionality
+- Unit tests for SessionManager and FileManager
+- Integration tests marked with `@pytest.mark.integration`
+- Temporary directories with proper cleanup
+- Mock objects for external dependencies
 
 ### Security Considerations
-- All sensitive files properly gitignored
+- Session files isolated per user account
 - No hardcoded credentials
-- Session files excluded from version control
+- All sensitive files in `.gitignore`
 - API credentials stored locally only
-
-### Data Formats
-The application exports structured data with consistent field names:
-- **Contacts**: id, first_name, last_name, username, phone, etc.
-- **Chats**: dialog metadata including unread counts, pinned status
-- **Cross-references**: matches between exported data and nickname lists
-
-### Resume Functionality
-The application can resume interrupted exports by:
-- Saving progress in `export_progress.json`
-- Tracking completion status per export type
-- Offering resume options on restart
 
 ## Common Issues
 
-### Authentication
-- Ensure API credentials are obtained from my.telegram.org
-- Handle 2FA prompts interactively
-- Session files persist authentication state
+### Session Management
+- Legacy `anon.session` files automatically migrated
+- Multiple sessions supported for different accounts
+- Session selection at startup
+- Isolated exports prevent data mixing
 
-### Export Process
-- Large contact lists may take time to process
-- Progress is saved automatically for resumption
-- Multiple output formats generated simultaneously
+### Performance
+- Tests run without parallel execution by default
+- Use `pytest -n auto` for parallel execution if needed
+- Granular chat processing prevents timeouts
+- Progress saved frequently for resumption
 
-### Cross-referencing
-- Nicknames file should contain one username per line
-- No @ symbols needed in nicknames.txt
-- Matches are case-insensitive
+### File Organization
+- All exports isolated by session name
+- Template-based file naming for consistency
+- Automatic directory creation
+- Cross-referencing respects session isolation
